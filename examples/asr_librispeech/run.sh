@@ -210,12 +210,14 @@ if [ ${stage} -le 7 ]; then
   train_feat=data/$train_set/wav.scp
   train_token_text=data/$train_set/token_text
   train_utt2num_frames=data/$train_set/utt2num_samples
-  python3 local/get_utt2num_samples.py data/$train_set
+  local/get_utt2num_samples.sh --cmd "$decode_cmd" --nj 20 data/$train_set
+#  python3 local/get_utt2num_samples.py data/$train_set
 
   valid_feat=data/$valid_set/wav.scp
   valid_token_text=data/$valid_set/token_text
   valid_utt2num_frames=data/$valid_set/utt2num_samples
-  python3 local/get_utt2num_samples.py data/$valid_set
+  local/get_utt2num_samples.sh --nj 4 data/$valid_set
+#  python3 local/get_utt2num_samples.py data/$valid_set
 
   asr_prep_json.py --feat-files $train_feat --token-text-files $train_token_text --utt2num-frames-files $train_utt2num_frames --output data/train.json
   asr_prep_json.py --feat-files $valid_feat --token-text-files $valid_token_text --utt2num-frames-files $valid_utt2num_frames --output data/valid.json
@@ -223,7 +225,8 @@ if [ ${stage} -le 7 ]; then
     feat=${dumpdir}/$dataset/delta${do_delta}/feats.scp
     token_text=data/$dataset/token_text
     utt2num_frames=data/$dataset/utt2num_samples
-    python3 local/get_utt2num_samples.py data/$dataset
+#    python3 local/get_utt2num_samples.py data/$dataset
+    local/get_utt2num_samples.sh --nj 4 data/$dataset
     asr_prep_json.py --feat-files $feat --token-text-files $token_text --utt2num-frames-files $utt2num_frames --output data/$dataset.json
   done
 fi
