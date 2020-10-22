@@ -20,6 +20,11 @@ try:
 except ImportError:
     raise ImportError("Please install kaldi_io with: pip install kaldi_io")
 
+try:
+    import kaldiio as kio
+except ImportError:
+    raise ImportError("Please install kaldiio with: pip install kaldiio")
+
 
 class FeatScpDataset(torch.utils.data.Dataset):
     """
@@ -48,7 +53,10 @@ class FeatScpDataset(torch.utils.data.Dataset):
             try:
                 feat = kaldi_io.read_mat(rxfile)
             except Exception:
-                raise Exception("failed to read feature matrix {}.".format(rxfile))
+                try:
+                    feat = kio.load_mat(rxfile)
+                except Exception:
+                    raise Exception("failed to read feature matrix {}.".format(rxfile))
             assert feat is not None and isinstance(feat, np.ndarray)
             if len(self.sizes) == self.size:
                 break
