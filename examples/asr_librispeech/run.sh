@@ -12,9 +12,9 @@ free_gpu= # comma-separated available GPU ids, eg., "0" or "0,1"; automatically 
 
 # E2E model related
 affix=
-train_set=train_960
+train_set=train_460
 valid_set=dev
-test_set="test_clean test_other dev_clean dev_other"
+test_set="test_clean dev_clean"
 checkpoint=checkpoint_best.pt
 use_transformer=false
 
@@ -52,14 +52,14 @@ fi
 
 if [ ${stage} -le 0 ]; then
   echo "Stage 0: Data Downloading"
-  for part in dev-clean test-clean dev-other test-other train-clean-100 train-clean-360 train-other-500; do
+  for part in dev-clean test-clean train-clean-100 train-clean-360; do
     local/download_and_untar.sh $data $data_url $part
   done
 fi
 
 if [ ${stage} -le 1 ]; then
   echo "Stage 1: Data Preparation"
-  for part in dev-clean test-clean dev-other test-other train-clean-100 train-clean-360 train-other-500; do
+  for part in dev-clean test-clean train-clean-100 train-clean-360; do
     # use underscore-separated names in data directories.
     local/data_prep.sh $data/LibriSpeech/$part data/$(echo $part | sed s/-/_/g)
   done
@@ -69,40 +69,40 @@ train_feat_dir=${dumpdir}/${train_set}/delta${do_delta}; mkdir -p ${train_feat_d
 valid_feat_dir=${dumpdir}/${valid_set}/delta${do_delta}; mkdir -p ${valid_feat_dir}
 if [ ${stage} -le 2 ]; then
   echo "Stage 2: Feature Generation"
-  fbankdir=fbank
+#  fbankdir=fbank
   # Generate the fbank features; by default 80-dimensional fbanks with pitch on each frame
-  for dataset in dev_clean test_clean dev_other test_other train_clean_100 train_clean_360 train_other_500; do
-    steps/make_fbank_pitch.sh --cmd "$train_cmd" --nj 32 --write_utt2num_frames true \
-      data/$dataset exp/make_fbank/$dataset ${fbankdir}
-    utils/fix_data_dir.sh data/$dataset
-  done
+#  for dataset in dev_clean test_clean dev_other test_other train_clean_100 train_clean_360 train_other_500; do
+#    steps/make_fbank_pitch.sh --cmd "$train_cmd" --nj 32 --write_utt2num_frames true \
+#      data/$dataset exp/make_fbank/$dataset ${fbankdir}
+#    utils/fix_data_dir.sh data/$dataset
+#  done
 
-  utils/combine_data.sh --extra-files utt2num_frames data/${train_set} data/train_clean_100 data/train_clean_360 data/train_other_500
-  utils/combine_data.sh --extra-files utt2num_frames data/${valid_set} data/dev_clean data/dev_other
+  utils/combine_data.sh --extra-files utt2num_frames data/${train_set} data/train_clean_100 data/train_clean_360 #data/train_other_500
+  utils/combine_data.sh --extra-files utt2num_frames data/${valid_set} data/dev_clean #data/dev_other
 
   # compute global CMVN
-  compute-cmvn-stats scp:data/${train_set}/feats.scp data/${train_set}/cmvn.ark
+#  compute-cmvn-stats scp:data/${train_set}/feats.scp data/${train_set}/cmvn.ark
 
   # dump features for training
-  if [[ $(hostname -f) == *.clsp.jhu.edu ]] && [ ! -d ${train_feat_dir}/storage ]; then
-    utils/create_split_dir.pl \
-      /export/b1{4,5,6,7}/${USER}/fairseq-data/egs/asr_librispeech/dump/${train_set}/delta${do_delta}/storage \
-      ${train_feat_dir}/storage
-  fi
-  if [[ $(hostname -f) == *.clsp.jhu.edu ]] && [ ! -d ${valid_feat_dir}/storage ]; then
-    utils/create_split_dir.pl \
-      /export/b1{4,5,6,7}/${USER}/fairseq-data/egs/asr_librispeech/dump/${valid_set}/delta${do_delta}/storage \
-      ${valid_feat_dir}/storage
-  fi
-  dump.sh --cmd "$train_cmd" --nj 80 --do_delta $do_delta \
-    data/${train_set}/feats.scp data/${train_set}/cmvn.ark exp/dump_feats/train ${train_feat_dir}
-  dump.sh --cmd "$train_cmd" --nj 32 --do_delta $do_delta \
-    data/${valid_set}/feats.scp data/${train_set}/cmvn.ark exp/dump_feats/valid ${valid_feat_dir}
-  for dataset in $test_set; do
-    test_feat_dir=${dumpdir}/$dataset/delta${do_delta}; mkdir -p ${test_feat_dir}
-    dump.sh --cmd "$train_cmd" --nj 32 --do_delta $do_delta \
-      data/$dataset/feats.scp data/${train_set}/cmvn.ark exp/dump_feats/$dataset ${test_feat_dir}
-  done
+#  if [[ $(hostname -f) == *.clsp.jhu.edu ]] && [ ! -d ${train_feat_dir}/storage ]; then
+#    utils/create_split_dir.pl \
+#      /export/b1{4,5,6,7}/${USER}/fairseq-data/egs/asr_librispeech/dump/${train_set}/delta${do_delta}/storage \
+#      ${train_feat_dir}/storage
+#  fi
+#  if [[ $(hostname -f) == *.clsp.jhu.edu ]] && [ ! -d ${valid_feat_dir}/storage ]; then
+#    utils/create_split_dir.pl \
+#      /export/b1{4,5,6,7}/${USER}/fairseq-data/egs/asr_librispeech/dump/${valid_set}/delta${do_delta}/storage \
+#      ${valid_feat_dir}/storage
+#  fi
+#  dump.sh --cmd "$train_cmd" --nj 80 --do_delta $do_delta \
+#    data/${train_set}/feats.scp data/${train_set}/cmvn.ark exp/dump_feats/train ${train_feat_dir}
+#  dump.sh --cmd "$train_cmd" --nj 32 --do_delta $do_delta \
+#    data/${valid_set}/feats.scp data/${train_set}/cmvn.ark exp/dump_feats/valid ${valid_feat_dir}
+#  for dataset in $test_set; do
+#    test_feat_dir=${dumpdir}/$dataset/delta${do_delta}; mkdir -p ${test_feat_dir}
+#    dump.sh --cmd "$train_cmd" --nj 32 --do_delta $do_delta \
+#      data/$dataset/feats.scp data/${train_set}/cmvn.ark exp/dump_feats/$dataset ${test_feat_dir}
+#  done
 fi
 
 dict=data/lang/${train_set}_${sentencepiece_type}${sentencepiece_vocabsize}_units.txt
@@ -147,19 +147,19 @@ if [ ${stage} -le 3 ]; then
 fi
 
 lmdict=$dict
-if [ ${stage} -le 4 ]; then
-  echo "Stage 4: Text Binarization for subword LM Training"
-  mkdir -p $lmdatadir/log
-  for dataset in $test_set; do test_paths="$test_paths $lmdatadir/$dataset.tokens"; done
-  test_paths=$(echo $test_paths | awk '{$1=$1;print}' | tr ' ' ',')
-  ${decode_cmd} $lmdatadir/log/preprocess.log \
-    python3 ../../fairseq_cli/preprocess.py --user-dir espresso --task language_modeling_for_asr \
-      --workers 50 --srcdict $lmdict --only-source \
-      --trainpref $lmdatadir/train.tokens \
-      --validpref $lmdatadir/$valid_set.tokens \
-      --testpref $test_paths \
-      --destdir $lmdatadir
-fi
+#if [ ${stage} -le 4 ]; then
+#  echo "Stage 4: Text Binarization for subword LM Training"
+#  mkdir -p $lmdatadir/log
+#  for dataset in $test_set; do test_paths="$test_paths $lmdatadir/$dataset.tokens"; done
+#  test_paths=$(echo $test_paths | awk '{$1=$1;print}' | tr ' ' ',')
+#  ${decode_cmd} $lmdatadir/log/preprocess.log \
+#    python3 ../../fairseq_cli/preprocess.py --user-dir espresso --task language_modeling_for_asr \
+#      --workers 50 --srcdict $lmdict --only-source \
+#      --trainpref $lmdatadir/train.tokens \
+#      --validpref $lmdatadir/$valid_set.tokens \
+#      --testpref $test_paths \
+#      --destdir $lmdatadir
+#fi
 
 [ -z "$free_gpu" ] && [[ $(hostname -f) == *.clsp.jhu.edu ]] && free_gpu=$(free-gpu -n $ngpus) || \
   echo "Unable to get $ngpus GPUs"
@@ -167,54 +167,63 @@ fi
 [ $(echo $free_gpu | sed 's/,/ /g' | awk '{print NF}') -ne "$ngpus" ] && \
   echo "number of GPU ids in --free-gpu=$free_gpu does not match --ngpus=$ngpus" && exit 1;
 
-if [ ${stage} -le 5 ]; then
-  echo "Stage 5: subword LM Training"
-  valid_subset=valid
-  mkdir -p $lmdir/log
-  log_file=$lmdir/log/train.log
-  [ -f $lmdir/checkpoint_last.pt ] && log_file="-a $log_file"
-  CUDA_VISIBLE_DEVICES=$free_gpu python3 ../../fairseq_cli/train.py $lmdatadir --seed 1 --user-dir espresso \
-    --task language_modeling_for_asr --dict $lmdict \
-    --log-interval $((16000/ngpus)) --log-format simple \
-    --num-workers 0 --max-tokens 32000 --batch-size 1024 --curriculum 1 \
-    --valid-subset $valid_subset --batch-size-valid 1536 \
-    --distributed-world-size $ngpus \
-    --max-epoch 30 --optimizer adam --lr 0.001 --clip-norm 1.0 \
-    --lr-scheduler reduce_lr_on_plateau --lr-shrink 0.5 \
-    --save-dir $lmdir --restore-file checkpoint_last.pt --save-interval-updates $((16000/ngpus)) \
-    --keep-interval-updates 3 --keep-last-epochs 5 --validate-interval 1 \
-    --arch lstm_lm_librispeech --criterion cross_entropy --sample-break-mode eos 2>&1 | tee $log_file
-fi
+#if [ ${stage} -le 5 ]; then
+#  echo "Stage 5: subword LM Training"
+#  valid_subset=valid
+#  mkdir -p $lmdir/log
+#  log_file=$lmdir/log/train.log
+#  [ -f $lmdir/checkpoint_last.pt ] && log_file="-a $log_file"
+#  CUDA_VISIBLE_DEVICES=$free_gpu python3 ../../fairseq_cli/train.py $lmdatadir --seed 1 --user-dir espresso \
+#    --task language_modeling_for_asr --dict $lmdict \
+#    --log-interval $((16000/ngpus)) --log-format simple \
+#    --num-workers 0 --max-tokens 32000 --batch-size 1024 --curriculum 1 \
+#    --valid-subset $valid_subset --batch-size-valid 1536 \
+#    --distributed-world-size $ngpus \
+#    --max-epoch 30 --optimizer adam --lr 0.001 --clip-norm 1.0 \
+#    --lr-scheduler reduce_lr_on_plateau --lr-shrink 0.5 \
+#    --save-dir $lmdir --restore-file checkpoint_last.pt --save-interval-updates $((16000/ngpus)) \
+#    --keep-interval-updates 3 --keep-last-epochs 5 --validate-interval 1 \
+#    --arch lstm_lm_librispeech --criterion cross_entropy --sample-break-mode eos 2>&1 | tee $log_file
+#fi
+#
+#if [ ${stage} -le 6 ]; then
+#  echo "Stage 6: subword LM Evaluation"
+#  gen_set_array=(test)
+#  num=$(echo $test_set | awk '{print NF-1}')
+#  for i in $(seq $num); do gen_set_array[$i]="test$i"; done
+#  test_set_array=($test_set)
+#  for i in $(seq 0 $num); do
+#    log_file=$lmdir/log/evaluation_${test_set_array[$i]}.log
+#    python3 ../../fairseq_cli/eval_lm.py $lmdatadir --user-dir espresso --cpu \
+#      --task language_modeling_for_asr --dict $lmdict --gen-subset ${gen_set_array[$i]} \
+#      --max-tokens 40960 --batch-size 1536 --sample-break-mode eos \
+#      --path $lmdir/$lm_checkpoint 2>&1 | tee $log_file
+#  done
+#fi
 
-if [ ${stage} -le 6 ]; then
-  echo "Stage 6: subword LM Evaluation"
-  gen_set_array=(test)
-  num=$(echo $test_set | awk '{print NF-1}')
-  for i in $(seq $num); do gen_set_array[$i]="test$i"; done
-  test_set_array=($test_set)
-  for i in $(seq 0 $num); do
-    log_file=$lmdir/log/evaluation_${test_set_array[$i]}.log
-    python3 ../../fairseq_cli/eval_lm.py $lmdatadir --user-dir espresso --cpu \
-      --task language_modeling_for_asr --dict $lmdict --gen-subset ${gen_set_array[$i]} \
-      --max-tokens 40960 --batch-size 1536 --sample-break-mode eos \
-      --path $lmdir/$lm_checkpoint 2>&1 | tee $log_file
-  done
-fi
+# Needed to read wav.scp in Python
+pip install --user kaldiio
 
 if [ ${stage} -le 7 ]; then
   echo "Stage 7: Dump Json Files"
-  train_feat=$train_feat_dir/feats.scp
+  # TODO(pzelasko): need to work-around the need for feats.scp (if there is any); try running this as is and seeing what happens
+  train_feat=data/$train_set/wav.scp
   train_token_text=data/$train_set/token_text
-  train_utt2num_frames=data/$train_set/utt2num_frames
-  valid_feat=$valid_feat_dir/feats.scp
+  train_utt2num_frames=data/$train_set/utt2num_samples
+  python3 local/get_utt2num_samples.py data/$train_set
+
+  valid_feat=data/$valid_set/wav.scp
   valid_token_text=data/$valid_set/token_text
-  valid_utt2num_frames=data/$valid_set/utt2num_frames
+  valid_utt2num_frames=data/$valid_set/utt2num_samples
+  python3 local/get_utt2num_samples.py data/$valid_set
+
   asr_prep_json.py --feat-files $train_feat --token-text-files $train_token_text --utt2num-frames-files $train_utt2num_frames --output data/train.json
   asr_prep_json.py --feat-files $valid_feat --token-text-files $valid_token_text --utt2num-frames-files $valid_utt2num_frames --output data/valid.json
   for dataset in $test_set; do
     feat=${dumpdir}/$dataset/delta${do_delta}/feats.scp
     token_text=data/$dataset/token_text
-    utt2num_frames=data/$dataset/utt2num_frames
+    utt2num_frames=data/$dataset/utt2num_samples
+    python3 local/get_utt2num_samples.py data/$dataset
     asr_prep_json.py --feat-files $feat --token-text-files $token_text --utt2num-frames-files $utt2num_frames --output data/$dataset.json
   done
 fi
