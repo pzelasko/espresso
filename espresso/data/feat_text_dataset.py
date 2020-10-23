@@ -28,13 +28,15 @@ except ImportError:
 
 def read_rxfile(rxfile: str) -> np.ndarray:
     try:
-        feat = kaldi_io.read_mat(rxfile)
-    except Exception:
-        try:
+        if rxfile.strip().endswith('|'):
+            # Waveform
             rate, feat = kio.load_mat(rxfile)
             feat = feat.reshape(-1, 1)
-        except Exception:
-            raise Exception("failed to read feature matrix {}.".format(rxfile))
+        else:
+            # Feature matrix
+            feat = kaldi_io.read_mat(rxfile)
+    except Exception:
+        raise Exception("failed to read feature matrix {}.".format(rxfile))
     return feat
 
 
