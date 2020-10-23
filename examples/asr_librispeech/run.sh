@@ -225,6 +225,10 @@ if [ ${stage} -le 7 ]; then
   done
 fi
 
+
+max_length=$(cat data/${train_set}/utt2num_samples data/${valid_set}/utt2num_samples data/test_clean/utt2num_samples | cut -f2 -d' ' | sort -n | tail -1)
+max_tokens=2260000
+
 if [ ${stage} -le 8 ]; then
   echo "Stage 8: Model Training"
   valid_subset=valid
@@ -232,10 +236,9 @@ if [ ${stage} -le 8 ]; then
   log_file=$dir/log/train.log
   [ -f $dir/checkpoint_last.pt ] && log_file="-a $log_file"
   opts=""
-  max_length=$(cut -f2 -d' ' data/${train_set}/utt2num_samples | sort -n | tail -1)
   if $use_transformer; then
     update_freq=$(((8+ngpus-1)/ngpus))
-    opts="$opts --arch speech_transformer_wav_librispeech --max-tokens 1260000 --max-epoch 100 --lr-scheduler tri_stage"
+    opts="$opts --arch speech_transformer_wav_librispeech --max-tokens $max_tokens --max-epoch 100 --lr-scheduler tri_stage"
     opts="$opts --warmup-steps $((25000/ngpus/update_freq)) --hold-steps $((900000/ngpus/update_freq)) --decay-steps $((1550000/ngpus/update_freq))"
     if $apply_specaug; then
       specaug_config="{'W': 80, 'F': 27, 'T': 100, 'num_freq_masks': 2, 'num_time_masks': 2, 'p': 1.0}"
@@ -253,12 +256,12 @@ if [ ${stage} -le 8 ]; then
     fi
   fi
   CUDA_VISIBLE_DEVICES=$free_gpu speech_train.py data --task speech_recognition_espresso --seed 1 --user-dir espresso \
-    --log-interval $((8000/ngpus/update_freq)) --log-format simple --print-training-sample-interval $((4000/ngpus/update_freq)) \
-    --num-workers 20 --data-buffer-size 4 --max-tokens 1260000 --batch-size 24 --curriculum 1 --empty-cache-freq 50 \
-    --valid-subset $valid_subset --batch-size-valid 48 --ddp-backend no_c10d --update-freq $update_freq \
+    --log-interval $((1500/ngpus/update_freq)) --log-format simple --print-training-sample-interval $((1000/ngpus/update_freq)) \
+    --num-workers 10 --data-buffer-size 1 --max-tokens $max_tokens --batch-size 48 --curriculum 1 --empty-cache-freq 50 \
+    --valid-subset $valid_subset --batch-size-valid 12 --ddp-backend no_c10d --update-freq $update_freq \
     --distributed-world-size $ngpus \
     --optimizer adam --lr 0.001 --weight-decay 0.0 --clip-norm 2.0 \
-    --save-dir $dir --restore-file checkpoint_last.pt --save-interval-updates $((6000/ngpus/update_freq)) \
+    --save-dir $dir --restore-file checkpoint_last.pt --save-interval-updates $((2000/ngpus/update_freq)) \
     --keep-interval-updates 3 --keep-last-epochs 5 --validate-interval 1 --best-checkpoint-metric wer \
     --criterion label_smoothed_cross_entropy_v2 --label-smoothing 0.1 --smoothing-type uniform \
     --dict $dict --bpe sentencepiece --sentencepiece-model ${sentencepiece_model}.model \
@@ -283,9 +286,9 @@ if [ ${stage} -le 9 ]; then
   for dataset in $test_set; do
     decode_dir=$dir/decode_$dataset${decode_affix:+_${decode_affix}}
     CUDA_VISIBLE_DEVICES=$(echo $free_gpu | sed 's/,/ /g' | awk '{print $1}') speech_recognize.py data \
-      --task speech_recognition_espresso --user-dir espresso --max-tokens 15000 --batch-size 24 \
+      --task speech_recognition_espresso --user-dir espresso --max-tokens $max_tokens --batch-size 24 \
       --num-shards 1 --shard-id 0 --dict $dict --bpe sentencepiece --sentencepiece-model ${sentencepiece_model}.model \
-      --gen-subset $dataset --max-source-positions 9999 --max-target-positions 999 \
+      --gen-subset $dataset --max-source-positions $max_length --max-target-positions 999 \
       --path $path --beam 60 --max-len-a 0.08 --max-len-b 0 --lenpen 1.0 \
       --results-path $decode_dir $opts
 

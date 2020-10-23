@@ -4,6 +4,7 @@
 # LICENSE file in the root directory of this source tree.
 
 import os
+import warnings
 from typing import List, Optional
 
 import numpy as np
@@ -24,6 +25,8 @@ try:
     import kaldiio as kio
 except ImportError:
     raise ImportError("Please install kaldiio with: pip install kaldiio")
+
+warnings.filterwarnings("ignore", category=UserWarning)
 
 
 def read_rxfile(rxfile: str) -> np.ndarray:
