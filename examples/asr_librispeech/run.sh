@@ -235,7 +235,7 @@ if [ ${stage} -le 8 ]; then
   max_length=$(cut -f2 -d' ' data/${train_set}/utt2num_samples | sort -n | tail -1)
   if $use_transformer; then
     update_freq=$(((8+ngpus-1)/ngpus))
-    opts="$opts --arch speech_transformer_wav_librispeech --max-tokens $((max_length * 2)) --max-epoch 100 --lr-scheduler tri_stage"
+    opts="$opts --arch speech_transformer_wav_librispeech --max-tokens 1260000 --max-epoch 100 --lr-scheduler tri_stage"
     opts="$opts --warmup-steps $((25000/ngpus/update_freq)) --hold-steps $((900000/ngpus/update_freq)) --decay-steps $((1550000/ngpus/update_freq))"
     if $apply_specaug; then
       specaug_config="{'W': 80, 'F': 27, 'T': 100, 'num_freq_masks': 2, 'num_time_masks': 2, 'p': 1.0}"
@@ -254,7 +254,7 @@ if [ ${stage} -le 8 ]; then
   fi
   CUDA_VISIBLE_DEVICES=$free_gpu speech_train.py data --task speech_recognition_espresso --seed 1 --user-dir espresso \
     --log-interval $((8000/ngpus/update_freq)) --log-format simple --print-training-sample-interval $((4000/ngpus/update_freq)) \
-    --num-workers 0 --data-buffer-size 0 --max-tokens 26000 --batch-size 24 --curriculum 1 --empty-cache-freq 50 \
+    --num-workers 20 --data-buffer-size 4 --max-tokens 1260000 --batch-size 24 --curriculum 1 --empty-cache-freq 50 \
     --valid-subset $valid_subset --batch-size-valid 48 --ddp-backend no_c10d --update-freq $update_freq \
     --distributed-world-size $ngpus \
     --optimizer adam --lr 0.001 --weight-decay 0.0 --clip-norm 2.0 \
