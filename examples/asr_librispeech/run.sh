@@ -16,7 +16,7 @@ train_set=train_460
 valid_set=dev
 test_set="test_clean dev_clean"
 checkpoint=checkpoint_best.pt
-use_transformer=false
+use_transformer=true
 
 # LM related
 lm_affix=
@@ -201,9 +201,6 @@ lmdict=$dict
 #  done
 #fi
 
-# Needed to read wav.scp in Python
-pip install --user kaldiio
-
 if [ ${stage} -le 7 ]; then
   echo "Stage 7: Dump Json Files"
   # TODO(pzelasko): need to work-around the need for feats.scp (if there is any); try running this as is and seeing what happens
@@ -211,21 +208,18 @@ if [ ${stage} -le 7 ]; then
   train_token_text=data/$train_set/token_text
   train_utt2num_frames=data/$train_set/utt2num_samples
   local/get_utt2num_samples.sh --cmd "$decode_cmd" --nj 20 data/$train_set
-#  python3 local/get_utt2num_samples.py data/$train_set
 
   valid_feat=data/$valid_set/wav.scp
   valid_token_text=data/$valid_set/token_text
   valid_utt2num_frames=data/$valid_set/utt2num_samples
   local/get_utt2num_samples.sh --nj 4 data/$valid_set
-#  python3 local/get_utt2num_samples.py data/$valid_set
 
   asr_prep_json.py --feat-files $train_feat --token-text-files $train_token_text --utt2num-frames-files $train_utt2num_frames --output data/train.json
   asr_prep_json.py --feat-files $valid_feat --token-text-files $valid_token_text --utt2num-frames-files $valid_utt2num_frames --output data/valid.json
   for dataset in $test_set; do
-    feat=${dumpdir}/$dataset/delta${do_delta}/feats.scp
+    feat=data/$dataset/wav.scp
     token_text=data/$dataset/token_text
     utt2num_frames=data/$dataset/utt2num_samples
-#    python3 local/get_utt2num_samples.py data/$dataset
     local/get_utt2num_samples.sh --nj 4 data/$dataset
     asr_prep_json.py --feat-files $feat --token-text-files $token_text --utt2num-frames-files $utt2num_frames --output data/$dataset.json
   done
@@ -238,9 +232,10 @@ if [ ${stage} -le 8 ]; then
   log_file=$dir/log/train.log
   [ -f $dir/checkpoint_last.pt ] && log_file="-a $log_file"
   opts=""
+  max_length=$(cut -f2 -d' ' data/${train_set}/utt2num_samples | sort -n | tail -1)
   if $use_transformer; then
     update_freq=$(((8+ngpus-1)/ngpus))
-    opts="$opts --arch speech_transformer_wav_librispeech --max-tokens 22000 --max-epoch 100 --lr-scheduler tri_stage"
+    opts="$opts --arch speech_transformer_wav_librispeech --max-tokens $((max_length * 2)) --max-epoch 100 --lr-scheduler tri_stage"
     opts="$opts --warmup-steps $((25000/ngpus/update_freq)) --hold-steps $((900000/ngpus/update_freq)) --decay-steps $((1550000/ngpus/update_freq))"
     if $apply_specaug; then
       specaug_config="{'W': 80, 'F': 27, 'T': 100, 'num_freq_masks': 2, 'num_time_masks': 2, 'p': 1.0}"
@@ -267,7 +262,7 @@ if [ ${stage} -le 8 ]; then
     --keep-interval-updates 3 --keep-last-epochs 5 --validate-interval 1 --best-checkpoint-metric wer \
     --criterion label_smoothed_cross_entropy_v2 --label-smoothing 0.1 --smoothing-type uniform \
     --dict $dict --bpe sentencepiece --sentencepiece-model ${sentencepiece_model}.model \
-    --max-source-positions 9999 --max-target-positions 999 \
+    --max-source-positions $max_length --max-target-positions 999 \
     $opts --specaugment-config "$specaug_config" 2>&1 | tee $log_file
 fi
 

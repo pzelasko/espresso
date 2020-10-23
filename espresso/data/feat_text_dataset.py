@@ -26,6 +26,18 @@ except ImportError:
     raise ImportError("Please install kaldiio with: pip install kaldiio")
 
 
+def read_rxfile(rxfile: str) -> np.ndarray:
+    try:
+        feat = kaldi_io.read_mat(rxfile)
+    except Exception:
+        try:
+            rate, feat = kio.load_mat(rxfile)
+            feat = feat.reshape(-1, 1)
+        except Exception:
+            raise Exception("failed to read feature matrix {}.".format(rxfile))
+    return feat
+
+
 class FeatScpDataset(torch.utils.data.Dataset):
     """
     A dataset for audio features prepared in Kaldi scp format (e.g., feats.scp).
@@ -50,13 +62,7 @@ class FeatScpDataset(torch.utils.data.Dataset):
             self.sizes = utt2num_frames
 
         for rxfile in self.rxfiles:
-            try:
-                feat = kaldi_io.read_mat(rxfile)
-            except Exception:
-                try:
-                    feat = kio.load_mat(rxfile)
-                except Exception:
-                    raise Exception("failed to read feature matrix {}.".format(rxfile))
+            feat = read_rxfile(rxfile)
             assert feat is not None and isinstance(feat, np.ndarray)
             if len(self.sizes) == self.size:
                 break
@@ -153,7 +159,7 @@ class FeatScpCachedDataset(FeatScpDataset):
     def __getitem__(self, i):
         self.check_index(i)
         if not self.prefetch_called:  # no caching
-            feat = kaldi_io.read_mat(self.rxfiles[i])
+            feat = read_rxfile(self.rxfiles[i])
             return torch.from_numpy(feat).float()
         if i not in self.cache_index:
             assert (
