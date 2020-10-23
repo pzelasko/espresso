@@ -366,8 +366,10 @@ class SpeechTransformerEncoder(TransformerEncoder):
                   Only populated if *return_all_hiddens* is True.
         """
         if self.waveform_inputs:
-            # TODO(pzelasko): validate that this works...
-            src_tokens = self.logmel_fbank(src_tokens)
+            src_tokens = self.logmel_fbank(src_tokens.squeeze())
+            src_tokens = src_tokens.transpose(2, 1)
+            # TODO(pzelasko): parametrize the "window_hop" of 200
+            src_lengths = src_lengths // 200
 
         if self.conv_layers_before is not None:
             x, src_lengths, encoder_padding_mask = self.conv_layers_before(src_tokens, src_lengths)
