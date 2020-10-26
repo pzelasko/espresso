@@ -366,7 +366,11 @@ class SpeechTransformerEncoder(TransformerEncoder):
                   Only populated if *return_all_hiddens* is True.
         """
         if self.waveform_inputs:
-            src_tokens = self.logmel_fbank(src_tokens.squeeze())
+            # We need to squeeze here as the audio samples are passed
+            # in tensor of shape (batch_size, seq_len, 1) - that last dim
+            # is artificial, but compatible with what Espresso expects
+            # (normally src_tokens would be log Mel energies or MFCCs)
+            src_tokens = self.logmel_fbank(src_tokens.squeeze(2))
             src_tokens = src_tokens.transpose(2, 1)
             # TODO(pzelasko): parametrize the "window_hop" of 200
             src_lengths = src_lengths // 200
