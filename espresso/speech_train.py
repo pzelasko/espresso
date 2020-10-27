@@ -28,6 +28,33 @@ from fairseq.logging import meters, metrics, progress_bar
 from fairseq.model_parallel.megatron_trainer import MegatronTrainer
 from fairseq.trainer import Trainer
 
+# (pzelasko): This code disables using of shared memory inside PyTorch DataLoader
+# It seems to have contributed to a nice speedup in the CLSP grid.
+# Source: https://github.com/huaweicloud/dls-example/issues/26#issuecomment-411990039
+
+import sys
+import torch
+from torch.utils.data import dataloader
+from torch.multiprocessing import reductions
+from multiprocessing.reduction import ForkingPickler
+
+default_collate_func = dataloader.default_collate
+
+
+def default_collate_override(batch):
+    dataloader._use_shared_memory = False
+    return default_collate_func(batch)
+
+setattr(dataloader, 'default_collate', default_collate_override)
+
+for t in torch._storage_classes:
+    if sys.version_info[0] == 2:
+        if t in ForkingPickler.dispatch:
+            del ForkingPickler.dispatch[t]
+    else:
+        if t in ForkingPickler._extra_reducers:
+            del ForkingPickler._extra_reducers[t]
+
 
 logging.basicConfig(
     format="%(asctime)s | %(levelname)s | %(name)s | %(message)s",

@@ -10,6 +10,7 @@ import torch
 import torchaudio
 from torch import Tensor
 import torch.nn as nn
+from torch.nn import BatchNorm1d
 
 from fairseq import utils
 from fairseq.models import (
@@ -251,8 +252,9 @@ class SpeechTransformerEncoder(TransformerEncoder):
         if self.waveform_inputs:
             self.logmel_fbank = torchaudio.transforms.MelSpectrogram(
                 sample_rate=args.sampling_rate,
-                n_mels=40
+                n_mels=80
             )
+            self.pseudo_cmvn = BatchNorm1d(80)
 
         self.dropout_module = FairseqDropout(args.dropout, module_name=self.__class__.__name__)
         self.encoder_layerdrop = args.encoder_layerdrop
@@ -371,6 +373,8 @@ class SpeechTransformerEncoder(TransformerEncoder):
             # is artificial, but compatible with what Espresso expects
             # (normally src_tokens would be log Mel energies or MFCCs)
             src_tokens = self.logmel_fbank(src_tokens.squeeze(2))
+            src_tokens = self.pseudo_cmvn(src_tokens)
+            # (N, C, L) -> (N, L, C)
             src_tokens = src_tokens.transpose(2, 1)
             # TODO(pzelasko): parametrize the "window_hop" of 200
             src_lengths = src_lengths // 200

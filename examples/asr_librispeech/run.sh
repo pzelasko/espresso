@@ -256,13 +256,13 @@ if [ ${stage} -le 8 ]; then
     fi
   fi
   CUDA_VISIBLE_DEVICES=$free_gpu speech_train.py data --task speech_recognition_espresso --seed 1 --user-dir espresso \
-    --log-interval $((1500/ngpus/update_freq)) --log-format simple --print-training-sample-interval $((1000/ngpus/update_freq)) \
+    --log-interval $((6000/ngpus/update_freq)) --log-format simple --print-training-sample-interval $((4000/ngpus/update_freq)) \
     --num-workers 4 --data-buffer-size 1 --max-tokens $max_tokens --batch-size 24 --curriculum 1 --empty-cache-freq 25 \
     --valid-subset $valid_subset --batch-size-valid 12 --ddp-backend no_c10d --update-freq $update_freq \
     --distributed-world-size $ngpus \
     --optimizer adam --lr 0.001 --weight-decay 0.0 --clip-norm 2.0 \
-    --save-dir $dir --restore-file checkpoint_last.pt --save-interval-updates $((2000/ngpus/update_freq)) \
-    --keep-interval-updates 3 --keep-last-epochs 5 --validate-interval 500 --best-checkpoint-metric wer \
+    --save-dir $dir --restore-file checkpoint_last.pt --save-interval-updates $((8000/ngpus/update_freq)) \
+    --keep-interval-updates 3 --keep-last-epochs 5 --validate-interval 4000 --best-checkpoint-metric wer \
     --criterion label_smoothed_cross_entropy_v2 --label-smoothing 0.1 --smoothing-type uniform \
     --dict $dict --bpe sentencepiece --sentencepiece-model ${sentencepiece_model}.model \
     --max-source-positions $max_length --max-target-positions 999 \
