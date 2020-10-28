@@ -450,7 +450,7 @@ class SpeechLSTMEncoder(FairseqEncoder):
         true_shape = [seqlen, bsz, self.output_units]
         pred_shape = list(x.size())
         if pred_shape != true_shape:
-            logger.warning(f'After RNN, the sequence length shape got changed (oops?) from {str(true_shape)} to {str(pred_shape)}')
+            #logger.warning(f'After RNN, the sequence length shape got changed (oops?) from {str(true_shape)} to {str(pred_shape)}')
             padding_mask = padding_mask[:pred_shape[1], :pred_shape[0]]
         # assert list(x.size()) == [seqlen, bsz, self.output_units], f'LHS: {str(list(x.size()))}, RHS: {str([seqlen, bsz, self.output_units])}'
 
