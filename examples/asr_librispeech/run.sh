@@ -245,7 +245,7 @@ if [ ${stage} -le 8 ]; then
     fi
   else
     update_freq=$(((2+ngpus-1)/ngpus))
-    opts="$opts --arch speech_conv_lstm_librispeech"
+    opts="$opts --arch speech_wav_conv_lstm_librispeech"
     if $apply_specaug; then
       opts="$opts --max-epoch 95 --lr-scheduler tri_stage"
       opts="$opts --warmup-steps $((2000/ngpus/update_freq)) --hold-steps $((600000/ngpus/update_freq)) --decay-steps $((1040000/ngpus/update_freq))"
@@ -257,7 +257,7 @@ if [ ${stage} -le 8 ]; then
   fi
   CUDA_VISIBLE_DEVICES=$free_gpu speech_train.py data --task speech_recognition_espresso --seed 1 --user-dir espresso \
     --log-interval $((6000/ngpus/update_freq)) --log-format simple --print-training-sample-interval $((4000/ngpus/update_freq)) \
-    --num-workers 4 --data-buffer-size 1 --max-tokens $max_tokens --batch-size 24 --curriculum 1 --empty-cache-freq 25 \
+    --num-workers 4 --data-buffer-size 1 --max-tokens $max_tokens --batch-size 32 --curriculum 1 --empty-cache-freq 25 \
     --valid-subset $valid_subset --batch-size-valid 12 --ddp-backend no_c10d --update-freq $update_freq \
     --distributed-world-size $ngpus \
     --optimizer adam --lr 0.001 --weight-decay 0.0 --clip-norm 2.0 \

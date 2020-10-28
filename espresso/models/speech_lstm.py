@@ -7,6 +7,7 @@ import logging
 from typing import Dict, List, Optional, Tuple
 
 import torch
+import torchaudio
 from torch import Tensor
 import torch.nn as nn
 import torch.nn.functional as F
@@ -203,6 +204,8 @@ class SpeechLSTMModel(FairseqEncoderDecoderModel):
             residual=args.encoder_rnn_residual,
             src_bucketed=(getattr(task.args, "num_batch_buckets", 0) > 0),
             max_source_positions=max_source_positions,
+            waveform_inputs=args.waveform_inputs,
+            sampling_rate=args.sampling_rate
         )
         decoder = SpeechLSTMDecoder(
             dictionary=task.target_dictionary,
@@ -331,8 +334,18 @@ class SpeechLSTMEncoder(FairseqEncoder):
         num_layers=1, dropout_in=0.1, dropout_out=0.1, bidirectional=False,
         residual=False, left_pad=False, padding_value=0., src_bucketed=False,
         max_source_positions=DEFAULT_MAX_SOURCE_POSITIONS,
+        waveform_inputs: bool = False, sampling_rate: Optional[int] = 16000
     ):
         super().__init__(None)  # no src dictionary
+
+        self.waveform_inputs = waveform_inputs
+        if self.waveform_inputs:
+            self.logmel_fbank = torchaudio.transforms.MelSpectrogram(
+                sample_rate=sampling_rate,
+                n_mels=80
+            )
+            self.pseudo_cmvn = nn.BatchNorm1d(80)
+
         self.conv_layers_before = conv_layers_before
         self.num_layers = num_layers
         self.dropout_in_module = FairseqDropout(dropout_in, module_name=self.__class__.__name__)
@@ -389,6 +402,13 @@ class SpeechLSTMEncoder(FairseqEncoder):
                 left_to_right=True,
             )
 
+        if self.waveform_inputs:
+            src_tokens = self.logmel_fbank(src_tokens.squeeze())
+            src_tokens = self.pseudo_cmvn(src_tokens)
+            src_tokens = src_tokens.transpose(2, 1)
+            # TODO(pzelasko): parametrize the "window_hop" of 200
+            src_lengths = src_lengths // 200
+
         if self.conv_layers_before is not None:
             x, src_lengths, padding_mask = self.conv_layers_before(src_tokens, src_lengths)
         else:
@@ -426,7 +446,13 @@ class SpeechLSTMEncoder(FairseqEncoder):
             if i < len(self.lstm) - 1:  # not applying dropout for the last layer
                 x = self.dropout_out_module(x)
             x = x + prev_x if self.residual and i > 0 else x
-        assert list(x.size()) == [seqlen, bsz, self.output_units]
+
+        true_shape = [seqlen, bsz, self.output_units]
+        pred_shape = list(x.size())
+        if pred_shape != true_shape:
+            logger.warning(f'After RNN, the sequence length shape got changed (oops?) from {str(true_shape)} to {str(pred_shape)}')
+            padding_mask = padding_mask[:pred_shape[1], :pred_shape[0]]
+        # assert list(x.size()) == [seqlen, bsz, self.output_units], f'LHS: {str(list(x.size()))}, RHS: {str([seqlen, bsz, self.output_units])}'
 
         encoder_padding_mask = padding_mask.t()
 
@@ -894,6 +920,23 @@ def speech_conv_lstm_librispeech(args):
     args.decoder_rnn_residual = getattr(args, "decoder_rnn_residual", True)
     args.attention_type = getattr(args, "attention_type", "bahdanau")
     args.attention_dim = getattr(args, "attention_dim", 512)
+    base_architecture(args)
+
+
+@register_model_architecture("speech_lstm", "speech_wav_conv_lstm_librispeech")
+def speech_conv_lstm_librispeech(args):
+    args.dropout = getattr(args, "dropout", 0.3)
+    args.encoder_rnn_hidden_size = getattr(args, "encoder_rnn_hidden_size", 1024)
+    args.encoder_rnn_layers = getattr(args, "encoder_rnn_layers", 4)
+    args.decoder_embed_dim = getattr(args, "decoder_embed_dim", 512)
+    args.decoder_hidden_size = getattr(args, "decoder_hidden_size", 1024)
+    args.decoder_layers = getattr(args, "decoder_layers", 3)
+    args.decoder_out_embed_dim = getattr(args, "decoder_out_embed_dim", 3072)
+    args.decoder_rnn_residual = getattr(args, "decoder_rnn_residual", True)
+    args.attention_type = getattr(args, "attention_type", "bahdanau")
+    args.attention_dim = getattr(args, "attention_dim", 512)
+    args.waveform_inputs = True
+    args.sampling_rate = 16000
     base_architecture(args)
 
 
