@@ -217,7 +217,14 @@ class FeatScpCachedDataset(FeatScpDataset):
                 self.cache_index[idx] = ptx
                 length = self.sizes[idx]
                 dst = self.cache[ptx: ptx + length]
-                feat = read_rxfile(self.rxfiles[idx])
+                feat = read_rxfile(
+                    self.rxfiles[idx],
+                    # TODO: un-hardcode the additive gaussian noise scheduling
+                    # It will linearly scale the noise max magnitude until epoch 30,
+                    # and then keep it at that level for the rest of the training.
+                    # This mimics Jesus' setup for speaker ID random smoothing.
+                    add_noise_max_stddev=(min(self.epoch, 30) * 0.3 * INT16MAX / 30) if self.add_noise else None
+                )
                 if self.specaugment_config is not None and self.specaugment_config != "":
                     with data_utils.numpy_seed(self.seed, self.epoch, idx):
                         feat = specaug(feat, **eval(self.specaugment_config))

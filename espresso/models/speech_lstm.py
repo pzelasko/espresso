@@ -447,12 +447,12 @@ class SpeechLSTMEncoder(FairseqEncoder):
                 x = self.dropout_out_module(x)
             x = x + prev_x if self.residual and i > 0 else x
 
+        assert src_lengths.max() == x.size(0)
         true_shape = [seqlen, bsz, self.output_units]
         pred_shape = list(x.size())
         if pred_shape != true_shape:
-            #logger.warning(f'After RNN, the sequence length shape got changed (oops?) from {str(true_shape)} to {str(pred_shape)}')
+            # If the seqlen after unpacking is shorter, slice the reference to match the length
             padding_mask = padding_mask[:pred_shape[1], :pred_shape[0]]
-        # assert list(x.size()) == [seqlen, bsz, self.output_units], f'LHS: {str(list(x.size()))}, RHS: {str([seqlen, bsz, self.output_units])}'
 
         encoder_padding_mask = padding_mask.t()
 
