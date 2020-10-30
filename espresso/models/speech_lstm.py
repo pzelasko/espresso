@@ -334,15 +334,23 @@ class SpeechLSTMEncoder(FairseqEncoder):
         num_layers=1, dropout_in=0.1, dropout_out=0.1, bidirectional=False,
         residual=False, left_pad=False, padding_value=0., src_bucketed=False,
         max_source_positions=DEFAULT_MAX_SOURCE_POSITIONS,
-        waveform_inputs: bool = False, sampling_rate: Optional[int] = 16000
+        waveform_inputs: bool = False, sampling_rate: Optional[int] = 16000,
+        win_length=400, hop_length=160
     ):
         super().__init__(None)  # no src dictionary
 
         self.waveform_inputs = waveform_inputs
         if self.waveform_inputs:
+            self.win_length = win_length
+            self.hop_length = hop_length
             self.logmel_fbank = torchaudio.transforms.MelSpectrogram(
                 sample_rate=sampling_rate,
-                n_mels=80
+                n_mels=80,
+                # 25ms frame len
+                n_fft=self.win_length,
+                win_length=self.win_length,
+                # 10ms frame shift
+                hop_length=self.hop_length,
             )
             self.pseudo_cmvn = nn.BatchNorm1d(80)
 
@@ -404,10 +412,11 @@ class SpeechLSTMEncoder(FairseqEncoder):
 
         if self.waveform_inputs:
             src_tokens = self.logmel_fbank(src_tokens.squeeze())
+            # (pzelasko): because we're extracting features in the model, we don't have global CMVN info;
+            #             using batch norm instead is likely sub-optimal, but works
             src_tokens = self.pseudo_cmvn(src_tokens)
             src_tokens = src_tokens.transpose(2, 1)
-            # TODO(pzelasko): parametrize the "window_hop" of 200
-            src_lengths = src_lengths // 200
+            src_lengths = src_lengths // self.hop_length
 
         if self.conv_layers_before is not None:
             x, src_lengths, padding_mask = self.conv_layers_before(src_tokens, src_lengths)
