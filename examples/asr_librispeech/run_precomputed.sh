@@ -108,43 +108,43 @@ fi
 dict=data/lang/${train_set}_${sentencepiece_type}${sentencepiece_vocabsize}_units.txt
 sentencepiece_model=data/lang/${train_set}_${sentencepiece_type}${sentencepiece_vocabsize}
 lmdatadir=data/lm_text
-#if [ ${stage} -le 3 ]; then
-#  echo "Stage 3: Dictionary Preparation and Text Tokenization"
-#  mkdir -p data/lang
-#  cut -f 2- -d" " data/${train_set}/text > data/lang/input
-#  echo "$0: training sentencepiece model..."
-#  python3 ../../scripts/spm_train.py --bos_id=-1 --pad_id=0 --eos_id=1 --unk_id=2 --input=data/lang/input \
-#    --vocab_size=$((sentencepiece_vocabsize+3)) --character_coverage=1.0 \
-#    --model_type=$sentencepiece_type --model_prefix=$sentencepiece_model \
-#    --input_sentence_size=10000000
-#  echo "$0: making a dictionary and tokenizing text for train/valid/test set..."
-#  for dataset in $train_set $valid_set $test_set; do
-#    text=data/$dataset/text
-#    token_text=data/$dataset/token_text
-#    cut -f 2- -d" " $text | \
-#      python3 ../../scripts/spm_encode.py --model=${sentencepiece_model}.model --output_format=piece | \
-#      paste -d" " <(cut -f 1 -d" " $text) - > $token_text
-#    if [ "$dataset" == "$train_set" ]; then
-#      cut -f 2- -d" " $token_text | tr ' ' '\n' | sort | uniq -c | \
-#        awk '{print $2,$1}' | sort > $dict
-#      wc -l $dict
-#    fi
-#  done
-#
-#  echo "$0: preparing text for subword LM..."
-#  mkdir -p $lmdatadir
-#  for dataset in $train_set $valid_set $test_set; do
-#    token_text=data/$dataset/token_text
-#    cut -f 2- -d" " $token_text > $lmdatadir/$dataset.tokens
-#  done
-#  if [ ! -e $lmdatadir/librispeech-lm-norm.txt.gz ]; then
-#    wget http://www.openslr.org/resources/11/librispeech-lm-norm.txt.gz -P $lmdatadir
-#  fi
-#  echo "$0: preparing extra corpus for subword LM training..."
-#  zcat $lmdatadir/librispeech-lm-norm.txt.gz | \
-#    python3 ../../scripts/spm_encode.py --model=${sentencepiece_model}.model --output_format=piece | \
-#    cat $lmdatadir/$train_set.tokens - > $lmdatadir/train.tokens
-#fi
+if [ ${stage} -le 3 ]; then
+  echo "Stage 3: Dictionary Preparation and Text Tokenization"
+  mkdir -p data/lang
+  cut -f 2- -d" " data/${train_set}/text > data/lang/input
+  echo "$0: training sentencepiece model..."
+  python3 ../../scripts/spm_train.py --bos_id=-1 --pad_id=0 --eos_id=1 --unk_id=2 --input=data/lang/input \
+    --vocab_size=$((sentencepiece_vocabsize+3)) --character_coverage=1.0 \
+    --model_type=$sentencepiece_type --model_prefix=$sentencepiece_model \
+    --input_sentence_size=10000000
+  echo "$0: making a dictionary and tokenizing text for train/valid/test set..."
+  for dataset in $train_set $valid_set $test_set; do
+    text=data/$dataset/text
+    token_text=data/$dataset/token_text
+    cut -f 2- -d" " $text | \
+      python3 ../../scripts/spm_encode.py --model=${sentencepiece_model}.model --output_format=piece | \
+      paste -d" " <(cut -f 1 -d" " $text) - > $token_text
+    if [ "$dataset" == "$train_set" ]; then
+      cut -f 2- -d" " $token_text | tr ' ' '\n' | sort | uniq -c | \
+        awk '{print $2,$1}' | sort > $dict
+      wc -l $dict
+    fi
+  done
+
+  echo "$0: preparing text for subword LM..."
+  mkdir -p $lmdatadir
+  for dataset in $train_set $valid_set $test_set; do
+    token_text=data/$dataset/token_text
+    cut -f 2- -d" " $token_text > $lmdatadir/$dataset.tokens
+  done
+  if [ ! -e $lmdatadir/librispeech-lm-norm.txt.gz ]; then
+    wget http://www.openslr.org/resources/11/librispeech-lm-norm.txt.gz -P $lmdatadir
+  fi
+  echo "$0: preparing extra corpus for subword LM training..."
+  zcat $lmdatadir/librispeech-lm-norm.txt.gz | \
+    python3 ../../scripts/spm_encode.py --model=${sentencepiece_model}.model --output_format=piece | \
+    cat $lmdatadir/$train_set.tokens - > $lmdatadir/train.tokens
+fi
 
 lmdict=$dict
 #if [ ${stage} -le 4 ]; then
@@ -247,7 +247,7 @@ if [ ${stage} -le 8 ]; then
   fi
   CUDA_VISIBLE_DEVICES=$free_gpu speech_train.py data --task speech_recognition_espresso --seed 1 --user-dir espresso \
     --log-interval $((8000/ngpus/update_freq)) --log-format simple --print-training-sample-interval $((4000/ngpus/update_freq)) \
-    --num-workers 0 --data-buffer-size 0 --max-tokens 26000 --batch-size 24 --curriculum 1 --empty-cache-freq 50 \
+    --num-workers 2 --data-buffer-size 1 --max-tokens 26000 --batch-size 24 --curriculum 1 --empty-cache-freq 50 \
     --valid-subset $valid_subset --batch-size-valid 48 --ddp-backend no_c10d --update-freq $update_freq \
     --distributed-world-size $ngpus \
     --optimizer adam --lr 0.001 --weight-decay 0.0 --clip-norm 2.0 \

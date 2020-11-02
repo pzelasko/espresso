@@ -955,36 +955,36 @@ class Trainer(object):
 
     def _check_grad_norms(self, grad_norm):
         """Check that grad norms are consistent across workers."""
-        if self._grad_norm_buf is not None:
-            self._grad_norm_buf.zero_()
-            self._grad_norm_buf[self.data_parallel_rank] = grad_norm
-            distributed_utils.all_reduce(
-                self._grad_norm_buf,
-                group=self.data_parallel_process_group
-            )
-
-            def is_consistent(tensor):
-                max_abs_diff = torch.max(torch.abs(tensor - tensor[0]))
-                return (
-                    not torch.isfinite(tensor).any()
-                    or (max_abs_diff / (tensor[0] + 1e-6) < 1e-6).all()
-                )
-
-            if not is_consistent(self._grad_norm_buf):
-                pretty_detail = "\n".join(
-                    "rank {:3d} = {:.8f}".format(r, n)
-                    for r, n in enumerate(self._grad_norm_buf.tolist())
-                )
-                error_detail = "grad_norm across the workers:\n{}\n".format(pretty_detail)
-                raise RuntimeError(
-                    "Fatal error: gradients are inconsistent between workers. "
-                    "Try --ddp-backend=no_c10d. "
-                    "Or are you mixing up different generation of GPUs in training?"
-                    + "\n"
-                    + "-" * 80
-                    + "\n{}\n".format(error_detail)
-                    + "-" * 80
-                )
+        # if self._grad_norm_buf is not None:
+        #     self._grad_norm_buf.zero_()
+        #     self._grad_norm_buf[self.data_parallel_rank] = grad_norm
+        #     distributed_utils.all_reduce(
+        #         self._grad_norm_buf,
+        #         group=self.data_parallel_process_group
+        #     )
+        #
+        #     def is_consistent(tensor):
+        #         max_abs_diff = torch.max(torch.abs(tensor - tensor[0]))
+        #         return (
+        #             not torch.isfinite(tensor).any()
+        #             or (max_abs_diff / (tensor[0] + 1e-6) < 1e-6).all()
+        #         )
+        #
+        #     if not is_consistent(self._grad_norm_buf):
+        #         pretty_detail = "\n".join(
+        #             "rank {:3d} = {:.8f}".format(r, n)
+        #             for r, n in enumerate(self._grad_norm_buf.tolist())
+        #         )
+        #         error_detail = "grad_norm across the workers:\n{}\n".format(pretty_detail)
+        #         raise RuntimeError(
+        #             "Fatal error: gradients are inconsistent between workers. "
+        #             "Try --ddp-backend=no_c10d. "
+        #             "Or are you mixing up different generation of GPUs in training?"
+        #             + "\n"
+        #             + "-" * 80
+        #             + "\n{}\n".format(error_detail)
+        #             + "-" * 80
+        #         )
 
     def _reduce_and_log_stats(self, logging_outputs, sample_size, grad_norm=None):
         if grad_norm is not None:

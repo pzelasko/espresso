@@ -335,7 +335,7 @@ class SpeechLSTMEncoder(FairseqEncoder):
         residual=False, left_pad=False, padding_value=0., src_bucketed=False,
         max_source_positions=DEFAULT_MAX_SOURCE_POSITIONS,
         waveform_inputs: bool = False, sampling_rate: Optional[int] = 16000,
-        win_length=400, hop_length=160
+        win_length=400, hop_length=160, external_cmvn_path: Optional[str] = None
     ):
         super().__init__(None)  # no src dictionary
 
@@ -352,7 +352,12 @@ class SpeechLSTMEncoder(FairseqEncoder):
                 # 10ms frame shift
                 hop_length=self.hop_length,
             )
-            self.pseudo_cmvn = nn.BatchNorm1d(80)
+            if external_cmvn_path is not None:
+                # TODO(pzelasko): load CMVN parameters
+                self.is_cmvn_precomputed = True
+            else:
+                self.pseudo_cmvn = nn.BatchNorm1d(80)
+                self.is_cmvn_precomputed = False
 
         self.conv_layers_before = conv_layers_before
         self.num_layers = num_layers
@@ -412,9 +417,13 @@ class SpeechLSTMEncoder(FairseqEncoder):
 
         if self.waveform_inputs:
             src_tokens = self.logmel_fbank(src_tokens.squeeze())
-            # (pzelasko): because we're extracting features in the model, we don't have global CMVN info;
-            #             using batch norm instead is likely sub-optimal, but works
-            src_tokens = self.pseudo_cmvn(src_tokens)
+            if self.is_cmvn_precomputed:
+                # TODO(pzelasko): implement
+                pass
+            else:
+                # (pzelasko): because we're extracting features in the model, we don't have global CMVN info;
+                #             using batch norm instead is likely sub-optimal, but works
+                src_tokens = self.pseudo_cmvn(src_tokens)
             src_tokens = src_tokens.transpose(2, 1)
             src_lengths = src_lengths // self.hop_length
 
@@ -910,6 +919,8 @@ def base_architecture(args):
     args.adaptive_softmax_cutoff = getattr(args, "adaptive_softmax_cutoff", None)
     args.share_decoder_input_output_embed = getattr(args, "share_decoder_input_output_embed", False)
     args.pretrained_lm_checkpoint = getattr(args, "pretrained_lm_checkpoint", None)
+    args.waveform_inputs = getattr(args, "waveform_inputs", False)
+    args.sampling_rate = getattr(args, "waveform_inputs", 16000)
 
 
 @register_model_architecture("speech_lstm", "speech_conv_lstm_wsj")
