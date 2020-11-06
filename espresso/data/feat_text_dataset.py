@@ -86,7 +86,7 @@ class FeatScpDataset(torch.utils.data.Dataset):
 
         assert len(self.sizes) == self.size
         self.sizes = np.array(self.sizes, dtype=np.int32)
-        self.feat_dim = 80 #feat.shape[1]  # feature dimension
+        self.feat_dim = feat.shape[1]  # feature dimension
         self.seed = seed
         self.specaugment_config = specaugment_config
         self.epoch = 1
