@@ -29,7 +29,7 @@ sentencepiece_type=unigram
 dumpdir=data/dump   # directory to dump full features
 data= # path to where you want to put the downloaded data; need to be specified if not on CLSP grid
 if [[ $(hostname -f) == *.clsp.jhu.edu ]]; then
-  data=/export/a15/vpanayotov/data
+  data=/export/corpora5
 fi
 data_url=www.openslr.org/resources/12
 kaldi_scoring=true
@@ -266,6 +266,7 @@ if [ ${stage} -le 8 ]; then
     --criterion label_smoothed_cross_entropy_v2 --label-smoothing 0.1 --smoothing-type uniform \
     --dict $dict --bpe sentencepiece --sentencepiece-model ${sentencepiece_model}.model \
     --max-source-positions $max_length --max-target-positions 999 \
+    --adv-prob 0.3 --adv-eps 0.01 \
     $opts --specaugment-config "$specaug_config" 2>&1 | tee $log_file
 fi
 
