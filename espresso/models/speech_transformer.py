@@ -133,7 +133,7 @@ class SpeechTransformerModel(TransformerModel):
             out_channels, kernel_sizes, strides, in_channels=task.feat_in_channels,
         ) if out_channels is not None else None
 
-        transformer_encoder_input_size = task.feat_dim // task.feat_in_channels
+        transformer_encoder_input_size = 80 // task.feat_in_channels
         if conv_layers is not None:
             for stride in strides:
                 if isinstance(stride, (list, tuple)):
