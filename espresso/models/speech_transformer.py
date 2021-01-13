@@ -7,8 +7,10 @@ import logging
 from typing import Any, Dict, Optional
 
 import torch
+import torchaudio
 from torch import Tensor
 import torch.nn as nn
+from torch.nn import BatchNorm1d
 
 from fairseq import utils
 from fairseq.models import (
@@ -131,7 +133,7 @@ class SpeechTransformerModel(TransformerModel):
             out_channels, kernel_sizes, strides, in_channels=task.feat_in_channels,
         ) if out_channels is not None else None
 
-        transformer_encoder_input_size = task.feat_dim // task.feat_in_channels
+        transformer_encoder_input_size = 80 // task.feat_in_channels
         if conv_layers is not None:
             for stride in strides:
                 if isinstance(stride, (list, tuple)):
@@ -246,6 +248,14 @@ class SpeechTransformerEncoder(TransformerEncoder):
         super(TransformerEncoder, self).__init__(None)  # no src dictionary
         self.register_buffer("version", torch.Tensor([3]))
 
+        self.waveform_inputs = args.waveform_inputs
+        if self.waveform_inputs:
+            self.logmel_fbank = torchaudio.transforms.MelSpectrogram(
+                sample_rate=args.sampling_rate,
+                n_mels=80
+            )
+            self.pseudo_cmvn = BatchNorm1d(80)
+
         self.dropout_module = FairseqDropout(args.dropout, module_name=self.__class__.__name__)
         self.encoder_layerdrop = args.encoder_layerdrop
 
@@ -357,6 +367,18 @@ class SpeechTransformerEncoder(TransformerEncoder):
                   hidden states of shape `(src_len, batch, embed_dim)`.
                   Only populated if *return_all_hiddens* is True.
         """
+        if self.waveform_inputs:
+            # We need to squeeze here as the audio samples are passed
+            # in tensor of shape (batch_size, seq_len, 1) - that last dim
+            # is artificial, but compatible with what Espresso expects
+            # (normally src_tokens would be log Mel energies or MFCCs)
+            src_tokens = self.logmel_fbank(src_tokens.squeeze(2))
+            src_tokens = self.pseudo_cmvn(src_tokens)
+            # (N, C, L) -> (N, L, C)
+            src_tokens = src_tokens.transpose(2, 1)
+            # TODO(pzelasko): parametrize the "window_hop" of 200
+            src_lengths = src_lengths // 200
+
         if self.conv_layers_before is not None:
             x, src_lengths, encoder_padding_mask = self.conv_layers_before(src_tokens, src_lengths)
         else:
@@ -583,6 +605,31 @@ def base_architecture(args):
 
 @register_model_architecture("speech_transformer", "speech_transformer_wsj")
 def speech_transformer_wsj(args):
+    base_architecture(args)
+
+
+@register_model_architecture("speech_transformer", "speech_transformer_wav_librispeech")
+def speech_transformer_librispeech_wav(args):
+    args.encoder_embed_dim = getattr(args, "encoder_embed_dim", 512)
+    args.encoder_ffn_embed_dim = getattr(args, "encoder_ffn_embed_dim", 2048)
+    args.encoder_layers = getattr(args, "encoder_layers", 12)
+    args.encoder_attention_heads = getattr(args, "encoder_attention_heads", 8)
+    args.encoder_transformer_context = getattr(args, "encoder_transformer_context", None)
+    args.decoder_embed_dim = getattr(args, "decoder_embed_dim", args.encoder_embed_dim)
+    args.decoder_ffn_embed_dim = getattr(
+        args, "decoder_ffn_embed_dim", args.encoder_ffn_embed_dim
+    )
+    args.decoder_layers = getattr(args, "decoder_layers", 6)
+    args.decoder_attention_heads = getattr(args, "decoder_attention_heads", 8)
+    args.attention_dropout = getattr(args, "attention_dropout", 0.1)
+    args.activation_dropout = getattr(args, "activation_dropout", 0.1)
+    args.dropout = getattr(args, "dropout", 0.1)
+    args.decoder_output_dim = getattr(
+        args, "decoder_output_dim", args.decoder_embed_dim
+    )
+    args.decoder_input_dim = getattr(args, "decoder_input_dim", args.decoder_embed_dim)
+    args.waveform_inputs = getattr(args, 'waveform_inputs', True)
+    args.sampling_rate = getattr(args, 'sampling_rate', 16000)
     base_architecture(args)
 
 

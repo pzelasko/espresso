@@ -2,8 +2,9 @@
 #
 # This source code is licensed under the MIT license found in the
 # LICENSE file in the root directory of this source tree.
-
+import logging
 import os
+import warnings
 from typing import List, Optional
 
 import numpy as np
@@ -19,6 +20,38 @@ try:
     import kaldi_io
 except ImportError:
     raise ImportError("Please install kaldi_io with: pip install kaldi_io")
+
+try:
+    import kaldiio as kio
+except ImportError:
+    raise ImportError("Please install kaldiio with: pip install kaldiio")
+
+
+warnings.filterwarnings("ignore", category=UserWarning)
+
+INT16MAX = 32767
+
+
+def add_gauss_noise(x, cur_max_stddev):
+    stddev = np.random.uniform(low=0, high=cur_max_stddev)
+    noise = stddev * np.random.randn(*x.shape)
+    return x + noise
+
+
+def read_rxfile(rxfile: str, add_noise_max_stddev: Optional[float] = None) -> np.ndarray:
+    try:
+        if rxfile.strip().endswith('|'):
+            # Waveform
+            rate, feat = kio.load_mat(rxfile)
+            feat = feat.reshape(-1, 1)
+        else:
+            # Feature matrix
+            feat = kaldi_io.read_mat(rxfile)
+            if add_noise_max_stddev:
+                feat = add_gauss_noise(feat, cur_max_stddev=add_noise_max_stddev)
+    except Exception:
+        raise Exception("failed to read feature matrix {}.".format(rxfile))
+    return feat
 
 
 class FeatScpDataset(torch.utils.data.Dataset):
@@ -45,10 +78,7 @@ class FeatScpDataset(torch.utils.data.Dataset):
             self.sizes = utt2num_frames
 
         for rxfile in self.rxfiles:
-            try:
-                feat = kaldi_io.read_mat(rxfile)
-            except Exception:
-                raise Exception("failed to read feature matrix {}.".format(rxfile))
+            feat = read_rxfile(rxfile)
             assert feat is not None and isinstance(feat, np.ndarray)
             if len(self.sizes) == self.size:
                 break
@@ -81,7 +111,7 @@ class FeatScpDataset(torch.utils.data.Dataset):
 
     def __getitem__(self, i):
         self.check_index(i)
-        feat = kaldi_io.read_mat(self.rxfiles[i])
+        feat = read_rxfile(self.rxfiles[i])
         if self.specaugment_config is not None and self.specaugment_config != "":
             with data_utils.numpy_seed(self.seed, self.epoch, i):
                 feat = specaug(feat, **eval(self.specaugment_config))
@@ -125,6 +155,11 @@ class FeatScpCachedDataset(FeatScpDataset):
         # has been called but self.prefetch() has not. In this case we simply only
         # load the queried samples into memory and don't do any caching.
         self.prefetch_called = False
+        # TODO(pzelasko): Espresso dataloader CLI options are still a mystery for me;
+        #                 use env var for now.
+        self.add_noise = bool(int(os.environ.get('ESPRESSO_ADD_NOISE', False)))
+        if self.add_noise:
+            logging.info(f'Yay! We are going to add noise in the training! (envvar ESPRESSO_ADD_NOISE={os.environ.get("ESPRESSO_ADD_NOISE")})')
 
     @property
     def supports_prefetch(self):
@@ -145,7 +180,14 @@ class FeatScpCachedDataset(FeatScpDataset):
     def __getitem__(self, i):
         self.check_index(i)
         if not self.prefetch_called:  # no caching
-            feat = kaldi_io.read_mat(self.rxfiles[i])
+            feat = read_rxfile(
+                self.rxfiles[i],
+                # TODO: un-hardcode the additive gaussian noise scheduling
+                # It will linearly scale the noise max magnitude until epoch 30,
+                # and then keep it at that level for the rest of the training.
+                # This mimics Jesus' setup for speaker ID random smoothing.
+                add_noise_max_stddev=(min(self.epoch, 30) * 0.3 * INT16MAX / 30) if self.add_noise else None
+            )
             return torch.from_numpy(feat).float()
         if i not in self.cache_index:
             assert (
@@ -175,7 +217,14 @@ class FeatScpCachedDataset(FeatScpDataset):
                 self.cache_index[idx] = ptx
                 length = self.sizes[idx]
                 dst = self.cache[ptx: ptx + length]
-                feat = kaldi_io.read_mat(self.rxfiles[idx])
+                feat = read_rxfile(
+                    self.rxfiles[idx],
+                    # TODO: un-hardcode the additive gaussian noise scheduling
+                    # It will linearly scale the noise max magnitude until epoch 30,
+                    # and then keep it at that level for the rest of the training.
+                    # This mimics Jesus' setup for speaker ID random smoothing.
+                    add_noise_max_stddev=(min(self.epoch, 30) * 0.3 * INT16MAX / 30) if self.add_noise else None
+                )
                 if self.specaugment_config is not None and self.specaugment_config != "":
                     with data_utils.numpy_seed(self.seed, self.epoch, idx):
                         feat = specaug(feat, **eval(self.specaugment_config))

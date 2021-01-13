@@ -176,6 +176,10 @@ class SpeechRecognitionEspressoTask(FairseqTask):
                             "a python dict. See speech_tools.specaug_interpolate.specaug() for "
                             "all allowed arguments. Argments not appearing in this string "
                             "will take on their default values")
+        parser.add_argument("--adv-prob", default=0.0, type=float,
+                            help="probability of doing adversarial training")
+        parser.add_argument("--adv-eps", default=0.0, type=float,
+                            help="epsilon of FGSM adversarial training")
         # fmt: off
 
     @classmethod
@@ -203,6 +207,8 @@ class SpeechRecognitionEspressoTask(FairseqTask):
         self.word_dict = word_dict
         self.feat_in_channels = args.feat_in_channels
         self.specaugment_config = args.specaugment_config
+        self.adv_prob = args.adv_prob
+        self.adv_eps = args.adv_eps
         torch.backends.cudnn.deterministic = True
         # Compansate for the removel of :func:`torch.rand()` from
         # :func:`fairseq.distributed_utils.distributed_init()` by fairseq,
@@ -306,6 +312,59 @@ class SpeechRecognitionEspressoTask(FairseqTask):
         """Return the max sentence length allowed by the task."""
         return (self.args.max_source_positions, self.args.max_target_positions)
 
+    def train_step(
+        self, sample, model, criterion, optimizer, update_num, ignore_grad=False,   
+    ):
+        """
+        Do forward and backward, and return the loss as computed by *criterion*
+        for the given *model* and *sample*.
+
+        Args:
+            sample (dict): the mini-batch. The format is defined by the
+                :class:`~fairseq.data.FairseqDataset`.
+            model (~fairseq.models.BaseFairseqModel): the model
+            criterion (~fairseq.criterions.FairseqCriterion): the criterion
+            optimizer (~fairseq.optim.FairseqOptimizer): the optimizer
+            update_num (int): the current update
+            ignore_grad (bool): multiply loss by 0 if this is set to True
+
+        Returns:
+            tuple:
+                - the loss
+                - the sample size, which is used as the denominator for the
+                  gradient
+                - logging outputs to display while training
+        """
+        model.train()
+        model.set_num_updates(update_num)
+        if torch.rand(1) > self.adv_prob: # normal step
+            with torch.autograd.profiler.record_function("forward"):
+                loss, sample_size, logging_output = criterion(model, sample)
+            if ignore_grad:
+                loss *= 0
+            with torch.autograd.profiler.record_function("backward"):
+                optimizer.backward(loss)
+        else: # adversarial training step
+            input_frames = sample["net_input"]["src_tokens"]
+            input_frames.requires_grad = True
+            loss, sample_size, logging_output = criterion(model, sample)
+            loss.backward()
+            input_grads = input_frames.grad.data
+            adv_frames = input_frames + input_frames.abs().max() * self.adv_eps * input_grads.sign() # FGSM
+            adv_frames = adv_frames.detach() # detach from graph
+            sample["net_input"]["src_tokens"] = adv_frames
+            optimizer.zero_grad()
+            # following by a normal update on adversarial examples
+            with torch.autograd.profiler.record_function("forward"):
+                loss, sample_size, logging_output = criterion(model, sample)
+            if ignore_grad:
+                loss *= 0
+            with torch.autograd.profiler.record_function("backward"):
+                optimizer.backward(loss)
+            
+        return loss, sample_size, logging_output
+
+    
     @property
     def target_dictionary(self):
         """Return the target :class:`~fairseq.data.AsrDictionary`."""

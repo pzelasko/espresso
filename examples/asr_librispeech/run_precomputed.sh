@@ -16,7 +16,7 @@ train_set=train_460
 valid_set=dev
 test_set="test_clean dev_clean"
 checkpoint=checkpoint_best.pt
-use_transformer=true
+use_transformer=false
 
 # LM related
 lm_affix=
@@ -29,7 +29,7 @@ sentencepiece_type=unigram
 dumpdir=data/dump   # directory to dump full features
 data= # path to where you want to put the downloaded data; need to be specified if not on CLSP grid
 if [[ $(hostname -f) == *.clsp.jhu.edu ]]; then
-  data=/export/corpora5
+  data=/export/a15/vpanayotov/data
 fi
 data_url=www.openslr.org/resources/12
 kaldi_scoring=true
@@ -69,40 +69,40 @@ train_feat_dir=${dumpdir}/${train_set}/delta${do_delta}; mkdir -p ${train_feat_d
 valid_feat_dir=${dumpdir}/${valid_set}/delta${do_delta}; mkdir -p ${valid_feat_dir}
 if [ ${stage} -le 2 ]; then
   echo "Stage 2: Feature Generation"
-#  fbankdir=fbank
+  fbankdir=fbank
   # Generate the fbank features; by default 80-dimensional fbanks with pitch on each frame
-#  for dataset in dev_clean test_clean dev_other test_other train_clean_100 train_clean_360 train_other_500; do
-#    steps/make_fbank_pitch.sh --cmd "$train_cmd" --nj 32 --write_utt2num_frames true \
-#      data/$dataset exp/make_fbank/$dataset ${fbankdir}
-#    utils/fix_data_dir.sh data/$dataset
-#  done
+  for dataset in dev_clean test_clean train_clean_100 train_clean_360; do
+    local/make_fbank_torchaudio.sh --cmd "$train_cmd" --nj 32 --write_utt2num_frames true \
+      data/$dataset ${fbankdir}
+    utils/fix_data_dir.sh data/$dataset
+  done
 
   utils/combine_data.sh --extra-files utt2num_frames data/${train_set} data/train_clean_100 data/train_clean_360 #data/train_other_500
   utils/combine_data.sh --extra-files utt2num_frames data/${valid_set} data/dev_clean #data/dev_other
 
   # compute global CMVN
-#  compute-cmvn-stats scp:data/${train_set}/feats.scp data/${train_set}/cmvn.ark
+  compute-cmvn-stats scp:data/${train_set}/feats.scp data/${train_set}/cmvn.ark
 
   # dump features for training
-#  if [[ $(hostname -f) == *.clsp.jhu.edu ]] && [ ! -d ${train_feat_dir}/storage ]; then
-#    utils/create_split_dir.pl \
-#      /export/b1{4,5,6,7}/${USER}/fairseq-data/egs/asr_librispeech/dump/${train_set}/delta${do_delta}/storage \
-#      ${train_feat_dir}/storage
-#  fi
-#  if [[ $(hostname -f) == *.clsp.jhu.edu ]] && [ ! -d ${valid_feat_dir}/storage ]; then
-#    utils/create_split_dir.pl \
-#      /export/b1{4,5,6,7}/${USER}/fairseq-data/egs/asr_librispeech/dump/${valid_set}/delta${do_delta}/storage \
-#      ${valid_feat_dir}/storage
-#  fi
-#  dump.sh --cmd "$train_cmd" --nj 80 --do_delta $do_delta \
-#    data/${train_set}/feats.scp data/${train_set}/cmvn.ark exp/dump_feats/train ${train_feat_dir}
-#  dump.sh --cmd "$train_cmd" --nj 32 --do_delta $do_delta \
-#    data/${valid_set}/feats.scp data/${train_set}/cmvn.ark exp/dump_feats/valid ${valid_feat_dir}
-#  for dataset in $test_set; do
-#    test_feat_dir=${dumpdir}/$dataset/delta${do_delta}; mkdir -p ${test_feat_dir}
-#    dump.sh --cmd "$train_cmd" --nj 32 --do_delta $do_delta \
-#      data/$dataset/feats.scp data/${train_set}/cmvn.ark exp/dump_feats/$dataset ${test_feat_dir}
-#  done
+  if [[ $(hostname -f) == *.clsp.jhu.edu ]] && [ ! -d ${train_feat_dir}/storage ]; then
+    utils/create_split_dir.pl \
+      /export/b1{4,5,6,7}/${USER}/fairseq-data/egs/asr_librispeech/dump/${train_set}/delta${do_delta}/storage \
+      ${train_feat_dir}/storage
+  fi
+  if [[ $(hostname -f) == *.clsp.jhu.edu ]] && [ ! -d ${valid_feat_dir}/storage ]; then
+    utils/create_split_dir.pl \
+      /export/b1{4,5,6,7}/${USER}/fairseq-data/egs/asr_librispeech/dump/${valid_set}/delta${do_delta}/storage \
+      ${valid_feat_dir}/storage
+  fi
+  dump.sh --cmd "$train_cmd" --nj 80 --do_delta $do_delta \
+    data/${train_set}/feats.scp data/${train_set}/cmvn.ark exp/dump_feats/train ${train_feat_dir}
+  dump.sh --cmd "$train_cmd" --nj 32 --do_delta $do_delta \
+    data/${valid_set}/feats.scp data/${train_set}/cmvn.ark exp/dump_feats/valid ${valid_feat_dir}
+  for dataset in $test_set; do
+    test_feat_dir=${dumpdir}/$dataset/delta${do_delta}; mkdir -p ${test_feat_dir}
+    dump.sh --cmd "$train_cmd" --nj 32 --do_delta $do_delta \
+      data/$dataset/feats.scp data/${train_set}/cmvn.ark exp/dump_feats/$dataset ${test_feat_dir}
+  done
 fi
 
 dict=data/lang/${train_set}_${sentencepiece_type}${sentencepiece_vocabsize}_units.txt
@@ -203,31 +203,21 @@ lmdict=$dict
 
 if [ ${stage} -le 7 ]; then
   echo "Stage 7: Dump Json Files"
-  # TODO(pzelasko): need to work-around the need for feats.scp (if there is any); try running this as is and seeing what happens
-  train_feat=data/$train_set/wav.scp
+  train_feat=$train_feat_dir/feats.scp
   train_token_text=data/$train_set/token_text
-  train_utt2num_frames=data/$train_set/utt2num_samples
-  local/get_utt2num_samples.sh --cmd "$decode_cmd" --nj 20 data/$train_set
-
-  valid_feat=data/$valid_set/wav.scp
+  train_utt2num_frames=data/$train_set/utt2num_frames
+  valid_feat=$valid_feat_dir/feats.scp
   valid_token_text=data/$valid_set/token_text
-  valid_utt2num_frames=data/$valid_set/utt2num_samples
-  local/get_utt2num_samples.sh --nj 4 data/$valid_set
-
+  valid_utt2num_frames=data/$valid_set/utt2num_frames
   asr_prep_json.py --feat-files $train_feat --token-text-files $train_token_text --utt2num-frames-files $train_utt2num_frames --output data/train.json
   asr_prep_json.py --feat-files $valid_feat --token-text-files $valid_token_text --utt2num-frames-files $valid_utt2num_frames --output data/valid.json
   for dataset in $test_set; do
-    feat=data/$dataset/wav.scp
+    feat=${dumpdir}/$dataset/delta${do_delta}/feats.scp
     token_text=data/$dataset/token_text
-    utt2num_frames=data/$dataset/utt2num_samples
-    local/get_utt2num_samples.sh --nj 4 data/$dataset
+    utt2num_frames=data/$dataset/utt2num_frames
     asr_prep_json.py --feat-files $feat --token-text-files $token_text --utt2num-frames-files $utt2num_frames --output data/$dataset.json
   done
 fi
-
-
-max_length=$(cat data/${train_set}/utt2num_samples data/${valid_set}/utt2num_samples data/test_clean/utt2num_samples | cut -f2 -d' ' | sort -n | tail -1)
-max_tokens=2260000
 
 if [ ${stage} -le 8 ]; then
   echo "Stage 8: Model Training"
@@ -238,14 +228,14 @@ if [ ${stage} -le 8 ]; then
   opts=""
   if $use_transformer; then
     update_freq=$(((8+ngpus-1)/ngpus))
-    opts="$opts --arch speech_transformer_wav_librispeech --max-tokens $max_tokens --max-epoch 100 --lr-scheduler tri_stage"
+    opts="$opts --arch speech_transformer_librispeech --max-tokens 22000 --max-epoch 100 --lr-scheduler tri_stage"
     opts="$opts --warmup-steps $((25000/ngpus/update_freq)) --hold-steps $((900000/ngpus/update_freq)) --decay-steps $((1550000/ngpus/update_freq))"
     if $apply_specaug; then
       specaug_config="{'W': 80, 'F': 27, 'T': 100, 'num_freq_masks': 2, 'num_time_masks': 2, 'p': 1.0}"
     fi
   else
     update_freq=$(((2+ngpus-1)/ngpus))
-    opts="$opts --arch speech_wav_conv_lstm_librispeech"
+    opts="$opts --arch speech_conv_lstm_librispeech"
     if $apply_specaug; then
       opts="$opts --max-epoch 95 --lr-scheduler tri_stage"
       opts="$opts --warmup-steps $((2000/ngpus/update_freq)) --hold-steps $((600000/ngpus/update_freq)) --decay-steps $((1040000/ngpus/update_freq))"
@@ -256,17 +246,16 @@ if [ ${stage} -le 8 ]; then
     fi
   fi
   CUDA_VISIBLE_DEVICES=$free_gpu speech_train.py data --task speech_recognition_espresso --seed 1 --user-dir espresso \
-    --log-interval $((6000/ngpus/update_freq)) --log-format simple --print-training-sample-interval $((4000/ngpus/update_freq)) \
-    --num-workers 4 --data-buffer-size 1 --max-tokens $max_tokens --batch-size 32 --curriculum 1 --empty-cache-freq 25 \
-    --valid-subset $valid_subset --batch-size-valid 12 --ddp-backend no_c10d --update-freq $update_freq \
+    --log-interval $((8000/ngpus/update_freq)) --log-format simple --print-training-sample-interval $((4000/ngpus/update_freq)) \
+    --num-workers 4 --data-buffer-size 0 --max-tokens 26000 --batch-size 24 --curriculum 1 --empty-cache-freq 50 \
+    --valid-subset $valid_subset --batch-size-valid 48 --ddp-backend no_c10d --update-freq $update_freq \
     --distributed-world-size $ngpus \
     --optimizer adam --lr 0.001 --weight-decay 0.0 --clip-norm 2.0 \
-    --save-dir $dir --restore-file checkpoint_last.pt --save-interval-updates $((8000/ngpus/update_freq)) \
-    --keep-interval-updates 3 --keep-last-epochs 5 --validate-interval 4000 --best-checkpoint-metric wer \
+    --save-dir $dir --restore-file checkpoint_last.pt --save-interval-updates $((6000/ngpus/update_freq)) \
+    --keep-interval-updates 3 --keep-last-epochs 5 --validate-interval 1 --best-checkpoint-metric wer \
     --criterion label_smoothed_cross_entropy_v2 --label-smoothing 0.1 --smoothing-type uniform \
     --dict $dict --bpe sentencepiece --sentencepiece-model ${sentencepiece_model}.model \
-    --max-source-positions $max_length --max-target-positions 999 \
-    --adv-prob 0.3 --adv-eps 0.01 \
+    --max-source-positions 9999 --max-target-positions 999 \
     $opts --specaugment-config "$specaug_config" 2>&1 | tee $log_file
 fi
 
@@ -287,9 +276,9 @@ if [ ${stage} -le 9 ]; then
   for dataset in $test_set; do
     decode_dir=$dir/decode_$dataset${decode_affix:+_${decode_affix}}
     CUDA_VISIBLE_DEVICES=$(echo $free_gpu | sed 's/,/ /g' | awk '{print $1}') speech_recognize.py data \
-      --task speech_recognition_espresso --user-dir espresso --max-tokens $max_tokens --batch-size 24 \
+      --task speech_recognition_espresso --user-dir espresso --max-tokens 15000 --batch-size 24 \
       --num-shards 1 --shard-id 0 --dict $dict --bpe sentencepiece --sentencepiece-model ${sentencepiece_model}.model \
-      --gen-subset $dataset --max-source-positions $max_length --max-target-positions 999 \
+      --gen-subset $dataset --max-source-positions 9999 --max-target-positions 999 \
       --path $path --beam 60 --max-len-a 0.08 --max-len-b 0 --lenpen 1.0 \
       --results-path $decode_dir $opts
 
@@ -301,3 +290,4 @@ if [ ${stage} -le 9 ]; then
     fi
   done
 fi
+
