@@ -11,7 +11,7 @@ We provide state-of-the-art training recipes for the following speech datasets:
 
 ### What's New:
 
-* April 2021: On-the-fly feature extraction from raw waveforms with [torchaudio](https://pytorch.org/audio/stable/index.html) is supported. A LibriSpeech recipe is released [here](https://github.com/freewym/espresso/tree/master/examples/asr_librispeech/run_torchaudio.sh) with no dependency on Kaldi.
+* April 2021: On-the-fly feature extraction from raw waveforms with [torchaudio](https://pytorch.org/audio/stable/index.html) is supported. A LibriSpeech recipe is released [here](https://github.com/freewym/espresso/tree/master/examples/asr_librispeech/run_torchaudio.sh) with no dependency on Kaldi and using YAML files (via [Hydra](https://hydra.cc/)) for configuring experiments.
 * June 2020: Transformer recipes released.
 * April 2020: Both [E2E LF-MMI](https://www.isca-speech.org/archive/Interspeech_2018/pdfs/1423.pdf) (using [PyChain](https://github.com/YiwenShaoStephen/pychain)) and Cross-Entropy training for hybrid ASR are now supported. WSJ recipes are provided [here](https://github.com/freewym/espresso/tree/master/examples/asr_wsj/run_chain_e2e.sh) and [here](https://github.com/freewym/espresso/tree/master/examples/asr_wsj/run_xent.sh) as examples, respectively.
 * March 2020: SpecAugment is supported and relevant recipes are released.
